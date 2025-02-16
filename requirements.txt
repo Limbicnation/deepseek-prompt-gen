@@ -1,0 +1,11 @@
+torch>=2.0.0
+transformers>=4.36.0
+accelerate>=0.24.0
+bitsandbytes>=0.41.1
+sentencepiece
+protobuf
+safetensors>=0.3.1
+numpy>=1.24.0
+tqdm
+black
+pytest
