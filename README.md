@@ -7,18 +7,17 @@ Prompt generator using DeepSeek-R1-Distill-Llama-8B for Stable Diffusion and Flu
 Choose one of these installation methods:
 
 ```bash
-# Method 1: Using Conda
 git clone https://github.com/yourusername/deepseek-prompt-gen.git
 cd deepseek-prompt-gen
 conda env create -f environment.yml
 conda activate deepseek-env
 
-# Method 2: Using pip
 git clone https://github.com/yourusername/deepseek-prompt-gen.git
 cd deepseek-prompt-gen
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+conda create -n deepseek python=3.10
+conda activate deepseek
 pip install -r requirements.txt
+
 ```
 
 ## Usage
