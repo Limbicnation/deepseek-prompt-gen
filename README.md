@@ -62,6 +62,31 @@ python deepseek_generator.py "a mystical forest" \
     --variations 2
 ```
 
+## Model Management
+
+### Using HuggingFace Models (Default)
+By default, the script will download the model from HuggingFace and cache it in the `./models` directory:
+
+```bash
+python deepseek_generator.py "a mystical forest"
+```
+
+### Downloading Models for Offline Use
+To avoid re-downloading models, you can use the included `download_model.py` script:
+
+```bash
+python download_model.py --output-dir ./local_model_dir
+```
+
+### Using Local Models
+To use a previously downloaded model:
+
+```bash
+python deepseek_generator.py "prompt" --model-name /path/to/local_model_dir --optimize
+```
+
+**Important:** Always use the `--optimize` flag when using local models to avoid VRAM issues.
+
 ## Model Settings
 - Temperature: 0.6 (optimized for coherent outputs)
 - Top-p: 0.95
@@ -70,10 +95,12 @@ python deepseek_generator.py "a mystical forest" \
 
 ## Advanced Configuration
 
+- `--model-name`: Path to a local model or HuggingFace model ID
 - `--device`: Choose between 'cuda' or 'cpu'
 - `--max-length`: Set maximum token length (default: 2048)
 - `--variations`: Number of prompt variations to generate (default: 2)
 - `--optimize`: Enable memory optimizations for lower VRAM usage
+- `--model-dir`: Directory to cache downloaded models (default: ./models)
 
 ## Requirements
 - Python 3.10+
@@ -89,13 +116,25 @@ python deepseek_generator.py "a mystical forest" \
 
 ## Troubleshooting
 
+### CUDA Out-of-Memory Errors
 If encountering CUDA out-of-memory errors:
-
 - Enable `--optimize` flag
 - Reduce `--max-length`
 - Lower number of `--variations`
- 
-For CPU-only systems, use `--device cpu`
+- Try using `--device cpu` (much slower)
+
+### Model Loading Issues
+If encountering errors loading a local model:
+- Ensure the model directory contains all required files (config.json, tokenizer files)
+- Use the `--optimize` flag when loading local models
+- Make sure the directory structure matches what's expected by HuggingFace Transformers
+- Verify you have sufficient permissions to access the directory
+
+### Re-downloading Models
+If the model keeps re-downloading despite using `--model-name`:
+- Ensure you're providing a complete path to a valid model directory
+- Use the `download_model.py` script to properly download and save the model
+- Try using the default HuggingFace caching mechanism without `--model-name`
 
 ## License
 Apache License 2.0
