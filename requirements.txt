@@ -1,10 +1,10 @@
-torch>=2.0.0
-transformers>=4.36.0
-accelerate>=0.24.0
-bitsandbytes>=0.41.1
+torch>=2.7.1
+transformers>=4.53.1
+accelerate>=1.8.1
+bitsandbytes>=0.46.1
 sentencepiece
 protobuf
-safetensors>=0.3.1
+safetensors>=0.4.4
 numpy>=1.24.0
 tqdm
 black
