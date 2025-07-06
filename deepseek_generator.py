@@ -13,6 +13,67 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import random
 
 
+def check_local_model_exists(model_name: str, local_model_dir: str = './local_model_dir') -> Optional[str]:
+    """
+    Check if a local model exists for the given model name.
+    
+    Args:
+        model_name: The HuggingFace model identifier
+        local_model_dir: Directory to check for local models
+        
+    Returns:
+        Path to local model if exists, None otherwise
+    """
+    if not os.path.exists(local_model_dir):
+        return None
+    
+    # First, check if the model files are directly in the local_model_dir
+    # This handles cases where the model was downloaded directly to ./local_model_dir
+    def check_model_files_in_dir(dir_path):
+        if not os.path.exists(dir_path) or not os.path.isdir(dir_path):
+            return False
+        
+        # Check for config.json (required)
+        if not os.path.exists(os.path.join(dir_path, 'config.json')):
+            return False
+        
+        # Check for at least one tokenizer file
+        tokenizer_files = ['tokenizer.json', 'tokenizer_config.json']
+        has_tokenizer = any(os.path.exists(os.path.join(dir_path, f)) for f in tokenizer_files)
+        if not has_tokenizer:
+            return False
+        
+        # Check for at least one model file
+        model_files = ['pytorch_model.bin', 'model.safetensors']
+        has_model = any(os.path.exists(os.path.join(dir_path, f)) for f in model_files)
+        if not has_model:
+            # Also check for model files with different patterns
+            model_files_in_dir = [f for f in os.listdir(dir_path) if f.endswith(('.bin', '.safetensors'))]
+            if not model_files_in_dir:
+                return False
+        
+        return True
+    
+    # Check if model files are directly in local_model_dir
+    if check_model_files_in_dir(local_model_dir):
+        print(f"Found local model at: {local_model_dir}")
+        return local_model_dir
+    
+    # If not found directly, try looking in subdirectory based on model name
+    # Extract model name from HuggingFace identifier (e.g., "deepseek-ai/DeepSeek-R1-Distill-Llama-8B" -> "DeepSeek-R1-Distill-Llama-8B")
+    if '/' in model_name:
+        model_folder = model_name.split('/')[-1]
+    else:
+        model_folder = model_name
+    
+    potential_path = os.path.join(local_model_dir, model_folder)
+    if check_model_files_in_dir(potential_path):
+        print(f"Found local model at: {potential_path}")
+        return potential_path
+    
+    return None
+
+
 class DeepSeekGenerator:
     def __init__(self, 
                  model_name: str = "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
@@ -41,8 +102,16 @@ class DeepSeekGenerator:
         print(f"Using device: {self.device}")
         
         # Check if model_name is a local path or a HuggingFace model ID
-        # A path containing a slash that exists on the filesystem is treated as a local path
+        # First, check if it's an existing local path
         is_local_path = os.path.exists(model_name) and os.path.isdir(model_name)
+        
+        # If not a local path, check if we have a local copy in ./local_model_dir
+        if not is_local_path:
+            local_model_path = check_local_model_exists(model_name, './local_model_dir')
+            if local_model_path:
+                model_name = local_model_path
+                is_local_path = True
+                print(f"Using existing local model instead of downloading")
         
         # Configure model caching and settings
         if not is_local_path:
