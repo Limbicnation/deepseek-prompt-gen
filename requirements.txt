@@ -1,11 +1,29 @@
-torch>=2.7.1
-transformers>=4.53.1
-accelerate>=1.8.1
-bitsandbytes>=0.46.1
-sentencepiece
-protobuf
-safetensors>=0.4.4
+# Core ML Framework - Install via conda for best results
+# conda install pytorch torchvision pytorch-cuda=12.1 -c pytorch -c nvidia
+torch>=2.1.0
+torchvision>=0.16.0
+
+# HuggingFace ecosystem - Compatible versions that work together
+transformers>=4.46.0
+accelerate>=0.25.0
+tokenizers>=0.20.0,<0.22.0
+
+# Quantization and optimization (optional - requires CUDA setup)
+# bitsandbytes>=0.43.0  # Uncomment if quantization is needed
+
+# Model and data handling
+safetensors>=0.4.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0,<5.0.0
+
+# Core utilities
 numpy>=1.24.0
-tqdm
-black
-pytest
+tqdm>=4.64.0
+requests>=2.28.0
+
+# Development tools
+black>=22.0.0
+pytest>=7.0.0
+
+# Additional utilities for model management
+huggingface-hub>=0.16.0

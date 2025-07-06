@@ -7,10 +7,103 @@ Generate high-quality prompts for Stable Diffusion using DeepSeek-R1-Distill-Lla
 import argparse
 import json
 import os
+from pathlib import Path
 from typing import Dict, List, Optional
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 import random
+
+
+def check_local_model_exists(model_name: str, local_model_dir: str = './local_model_dir') -> Optional[str]:
+    """
+    Check if a local model exists for the given model name.
+    
+    Args:
+        model_name: The HuggingFace model identifier or local path
+        local_model_dir: Directory to check for local models
+        
+    Returns:
+        Path to local model if exists, None otherwise
+        
+    Raises:
+        None - All exceptions are caught and handled gracefully
+    """
+    try:
+        local_dir_path = Path(local_model_dir)
+        if not local_dir_path.exists():
+            return None
+        
+        def check_model_files_in_dir(dir_path: Path) -> bool:
+            """
+            Check if a directory contains valid model files.
+            
+            Args:
+                dir_path: Path to directory to check
+                
+            Returns:
+                True if directory contains valid model files, False otherwise
+            """
+            try:
+                if not dir_path.exists() or not dir_path.is_dir():
+                    return False
+                
+                # Check for config.json (required)
+                if not (dir_path / 'config.json').exists():
+                    return False
+                
+                # Check for at least one tokenizer file
+                tokenizer_files = ['tokenizer.json', 'tokenizer_config.json']
+                has_tokenizer = any((dir_path / f).exists() for f in tokenizer_files)
+                if not has_tokenizer:
+                    return False
+                
+                # Check for at least one model file
+                model_files = ['pytorch_model.bin', 'model.safetensors']
+                has_model = any((dir_path / f).exists() for f in model_files)
+                if not has_model:
+                    # Also check for model files with different patterns
+                    try:
+                        model_files_in_dir = [
+                            f.name for f in dir_path.iterdir() 
+                            if f.is_file() and f.suffix in ('.bin', '.safetensors')
+                        ]
+                        if not model_files_in_dir:
+                            return False
+                    except (OSError, PermissionError) as e:
+                        print(f"Warning: Could not list files in {dir_path}: {e}")
+                        return False
+                
+                return True
+                
+            except (OSError, PermissionError) as e:
+                print(f"Warning: Could not access directory {dir_path}: {e}")
+                return False
+        
+        # Check if model files are directly in local_model_dir
+        if check_model_files_in_dir(local_dir_path):
+            print(f"Found local model at: {local_model_dir}")
+            return local_model_dir
+        
+        # If not found directly, try looking in subdirectory based on model name
+        # Extract model name from HuggingFace identifier
+        # Handle various separator patterns (/, \, etc.)
+        if '/' in model_name:
+            model_folder = model_name.split('/')[-1]
+        elif '\\' in model_name:
+            model_folder = model_name.split('\\')[-1]
+        else:
+            model_folder = model_name
+        
+        potential_path = local_dir_path / model_folder
+        if check_model_files_in_dir(potential_path):
+            print(f"Found local model at: {potential_path}")
+            return str(potential_path)
+        
+        return None
+        
+    except Exception as e:
+        print(f"Warning: Error checking for local model: {e}")
+        return None
 
 
 class DeepSeekGenerator:
@@ -22,7 +115,8 @@ class DeepSeekGenerator:
                  model_dir: str = './models',
                  temperature: float = 0.6,
                  top_p: float = 0.95,
-                 enforce_reasoning: bool = True):
+                 enforce_reasoning: bool = True,
+                 skip_local_check: bool = False):
         """
         Initialize the DeepSeek prompt generator with memory optimizations.
         
@@ -35,14 +129,25 @@ class DeepSeekGenerator:
             temperature: Temperature for generation (default: 0.6, recommended range: 0.5-0.7)
             top_p: Top-p value for nucleus sampling (default: 0.95)
             enforce_reasoning: Whether to enforce reasoning prefix <think> (default: True)
+            skip_local_check: Skip local model pre-check (for performance on network drives)
         """
         # Set device
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
         
         # Check if model_name is a local path or a HuggingFace model ID
-        # A path containing a slash that exists on the filesystem is treated as a local path
+        # First, check if it's an existing local path
         is_local_path = os.path.exists(model_name) and os.path.isdir(model_name)
+        
+        # If not a local path and local check is not skipped, check if we have a local copy in ./local_model_dir
+        if not is_local_path and not skip_local_check:
+            local_model_path = check_local_model_exists(model_name, './local_model_dir')
+            if local_model_path:
+                model_name = local_model_path
+                is_local_path = True
+                print(f"Using existing local model instead of downloading")
+        elif skip_local_check:
+            print(f"Skipping local model check (--skip-local-check enabled)")
         
         # Configure model caching and settings
         if not is_local_path:
@@ -90,21 +195,36 @@ class DeepSeekGenerator:
             print("\nIf you're using a HuggingFace model ID, verify the internet connection")
             raise
         
-        # Configure quantization
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4"
-        )
+        # Check if bitsandbytes is available for quantization
+        use_quantization = False
+        try:
+            from transformers import BitsAndBytesConfig
+            import bitsandbytes
+            use_quantization = True
+            print("✓ Using 4-bit quantization (bitsandbytes available)")
+        except (ImportError, Exception) as e:
+            print(f"⚠️  Quantization disabled (bitsandbytes not available: {e})")
+            use_quantization = False
         
         # Base model configuration
         model_config = {
             "trust_remote_code": True,
             "torch_dtype": torch.float16,
-            "quantization_config": quantization_config,
             "device_map": "auto"
         }
+        
+        # Add quantization only if bitsandbytes is available
+        if use_quantization:
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4"
+            )
+            model_config["quantization_config"] = quantization_config
+        else:
+            # Explicitly disable any quantization from model config
+            model_config["quantization_config"] = None
         
         # Additional memory optimizations
         if optimize_memory:
@@ -122,10 +242,25 @@ class DeepSeekGenerator:
         print(f"Loading model {self.model_path}...")
         try:
             if is_local_path:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_path,
-                    **model_config,
-                )
+                # For local models, we need to handle quantization config more carefully
+                if not use_quantization:
+                    # Load config first and remove any quantization settings
+                    from transformers import AutoConfig
+                    config = AutoConfig.from_pretrained(self.model_path, trust_remote_code=True)
+                    # Completely remove any quantization config from the model's config
+                    if hasattr(config, 'quantization_config'):
+                        delattr(config, 'quantization_config')
+                    
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        self.model_path,
+                        config=config,
+                        **model_config,
+                    )
+                else:
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        self.model_path,
+                        **model_config,
+                    )
             else:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_path,
@@ -289,6 +424,8 @@ def main():
                         help="Disable reasoning prefix enforcement")
     parser.add_argument("--math-problem", action="store_true", 
                         help="Format as math problem with step-by-step reasoning")
+    parser.add_argument("--skip-local-check", action="store_true", 
+                        help="Skip local model pre-check (for performance on network drives)")
     
     args = parser.parse_args()
     
@@ -304,7 +441,8 @@ def main():
             model_dir=args.model_dir,
             temperature=args.temperature,
             top_p=args.top_p,
-            enforce_reasoning=not args.no_reasoning
+            enforce_reasoning=not args.no_reasoning,
+            skip_local_check=args.skip_local_check
         )
         
         base_prompt = generator.generate_prompt(args.description, args.style, args.math_problem)

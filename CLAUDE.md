@@ -9,15 +9,24 @@ This is a Python-based prompt generator using DeepSeek-R1-Distill-Llama-8B for c
 ## Development Commands
 
 ### Environment Setup
+
+**IMPORTANT: Use compatible versions to avoid installation issues**
+
 ```bash
-# Method 1: Using conda environment
+# Method 1: Using conda environment (Recommended)
 conda env create -f environment.yml
 conda activate deepseek-env
 
-# Method 2: Using pip
-conda create -n deepseek python=3.10
-conda activate deepseek
+# Method 2: Using pip with compatible versions
+pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
+pip install transformers==4.45.2 accelerate==0.26.1 bitsandbytes==0.42.0
+pip install safetensors==0.4.1 sentencepiece protobuf tokenizers
+
+# Method 3: Using requirements.txt (after fixing versions)
 pip install -r requirements.txt
+
+# Verify installation
+python verify_installation.py
 ```
 
 ### Running the Generator
@@ -58,13 +67,22 @@ python download_model.py --output-dir ./local_model_dir
 python deepseek_generator.py "prompt" --model-name /path/to/local_model_dir --optimize
 ```
 
-### Testing
+### Testing and Verification
 ```bash
+# Verify installation first
+python verify_installation.py
+
 # Run tests (using pytest from requirements.txt)
 pytest
 
 # Code formatting
 black .
+
+# Troubleshooting installations
+# If you get "torchvision::nms" errors, reinstall with compatible versions:
+pip uninstall torch torchvision torchaudio transformers -y
+pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
+pip install transformers==4.45.2 accelerate==0.26.1 bitsandbytes==0.42.0
 ```
 
 ## Code Architecture
