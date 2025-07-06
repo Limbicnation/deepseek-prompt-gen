@@ -183,28 +183,23 @@ class DeepSeekGenerator:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             
-        # Build the user prompt based on whether this is a math problem or image generation
+        # Build the core prompt structure that is common to both cases
+        prompt_core = f"""Create a detailed image generation prompt based on this description: "{description}"
+Style reference: {self.style_templates.get(style, "Create a high-quality image")}
+Include specific details about:
+- Composition
+- Lighting
+- Colors
+- Atmosphere
+- Technical qualities
+Format the response as a single, detailed prompt."""
+        
         if is_math_problem:
-            user_prompt = f"""Create a detailed image generation prompt based on this description: "{description}"
-Please reason step by step, and put your final answer within \\boxed{{}}.
-Style reference: {self.style_templates.get(style, "Create a high-quality image")}
-Include specific details about:
-- Composition
-- Lighting
-- Colors
-- Atmosphere
-- Technical qualities
-Format the response as a single, detailed prompt."""
+            # Prepend the math-specific instruction
+            math_instruction = "Please reason step by step, and put your final answer within \\boxed{{}}.\n"
+            user_prompt = math_instruction + prompt_core
         else:
-            user_prompt = f"""Create a detailed image generation prompt based on this description: "{description}"
-Style reference: {self.style_templates.get(style, "Create a high-quality image")}
-Include specific details about:
-- Composition
-- Lighting
-- Colors
-- Atmosphere
-- Technical qualities
-Format the response as a single, detailed prompt."""
+            user_prompt = prompt_core
 
         inputs = self.tokenizer(
             user_prompt,
