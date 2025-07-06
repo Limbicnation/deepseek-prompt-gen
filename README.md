@@ -4,22 +4,38 @@ Prompt generator using DeepSeek-R1-Distill-Llama-8B for Stable Diffusion and Flu
 
 ## Installation
 
-Choose one of these installation methods:
+**Important:** For best results and to avoid dependency conflicts, use the conda-based installation method.
+
+### Recommended: Conda Installation
 
 ```bash
-# Method 1: Using environment.yml
+# Clone the repository
 git clone https://github.com/yourusername/deepseek-prompt-gen.git
 cd deepseek-prompt-gen
+
+# Method 1: Using environment.yml (Recommended)
 conda env create -f environment.yml
 conda activate deepseek-env
 
-# Method 2: Using requirements.txt
-git clone https://github.com/yourusername/deepseek-prompt-gen.git
-cd deepseek-prompt-gen
+# Method 2: Manual conda setup
 conda create -n deepseek python=3.10
 conda activate deepseek
+conda install pytorch torchvision pytorch-cuda=12.1 -c pytorch -c nvidia
+conda install transformers accelerate tokenizers -c conda-forge
+pip install safetensors sentencepiece protobuf huggingface-hub
+
+# Verify installation
+python verify_installation.py
+```
+
+### Alternative: pip Installation
+
+```bash
+# Only use if conda is not available
 pip install -r requirements.txt
 ```
+
+**Note:** The pip method may require manual CUDA library management. Use conda for the most reliable installation.
 
 ## Usage
 
@@ -103,38 +119,66 @@ python deepseek_generator.py "prompt" --model-name /path/to/local_model_dir --op
 - `--model-dir`: Directory to cache downloaded models (default: ./models)
 
 ## Requirements
+
+### System Requirements
 - Python 3.10+
-- CUDA-capable GPU:
-  - Standard: 8GB+ VRAM
-  - Optimized: 4GB+ VRAM
-- CUDA 11.7+
-- Key dependencies:
-    - torch>=2.0.0
-    - transformers>=4.36.0
-    - accelerate>=0.24.0
-    - bitsandbytes>=0.41.1
+- CUDA-capable GPU with 4GB+ VRAM (8GB+ recommended)
+- CUDA 12.1+ (12.6 tested and working)
+- Ubuntu/Linux (WSL2 supported)
+
+### Key Dependencies
+- PyTorch 2.1+ with CUDA 12.1 support
+- transformers 4.46+ (with tokenizers 0.20+)
+- accelerate 0.25+
+- bitsandbytes 0.43+ (optional, for quantization)
+
+### Verified Working Configuration
+- CUDA 12.1/12.6
+- PyTorch 2.5.1+cu121
+- transformers 4.46+
+- tokenizers 0.20+
 
 ## Troubleshooting
 
-### CUDA Out-of-Memory Errors
-If encountering CUDA out-of-memory errors:
-- Enable `--optimize` flag
-- Reduce `--max-length`
+### Installation Issues
+
+**Tensor Shape Mismatch Errors:**
+```bash
+# Clean up corrupted installations
+rm -rf ./local_model_dir ./models
+conda remove pytorch torchvision transformers --yes
+conda install pytorch torchvision pytorch-cuda=12.1 -c pytorch -c nvidia
+```
+
+**tokenizers Version Conflicts:**
+```bash
+# Ensure compatible versions
+pip install "transformers>=4.46.0" "tokenizers>=0.20.0,<0.22.0"
+```
+
+**bitsandbytes CUDA Issues:**
+```bash
+# Skip quantization if problematic
+python deepseek_generator.py "prompt" --output test.json
+# The generator will automatically disable quantization if bitsandbytes is unavailable
+```
+
+### Runtime Issues
+
+**CUDA Out-of-Memory Errors:**
+- Enable `--optimize` flag for 4-bit quantization
+- Reduce `--max-length` (try 1024 or 512)
 - Lower number of `--variations`
-- Try using `--device cpu` (much slower)
+- Use `--device cpu` as last resort (much slower)
 
-### Model Loading Issues
-If encountering errors loading a local model:
-- Ensure the model directory contains all required files (config.json, tokenizer files)
-- Use the `--optimize` flag when loading local models
-- Make sure the directory structure matches what's expected by HuggingFace Transformers
-- Verify you have sufficient permissions to access the directory
+**Model Loading Issues:**
+- Use `--skip-local-check` to bypass corrupted local models
+- Delete `./local_model_dir` and let the system download fresh models
+- Verify CUDA installation: `nvidia-smi` and `nvcc --version`
 
-### Re-downloading Models
-If the model keeps re-downloading despite using `--model-name`:
-- Ensure you're providing a complete path to a valid model directory
-- Use the `download_model.py` script to properly download and save the model
-- Try using the default HuggingFace caching mechanism without `--model-name`
+**Performance on Network Drives:**
+- Use `--skip-local-check` flag for better performance
+- Download models to local storage when possible
 
 ## License
 Apache License 2.0
