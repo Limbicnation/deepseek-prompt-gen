@@ -33,9 +33,20 @@ python deepseek_generator.py "a mystical forest" \
     --style fantasy \
     --optimize \
     --device cuda \
-    --max-length 2048 \
+    --max-length 32768 \
     --variations 2 \
+    --temperature 0.6 \
+    --top-p 0.95 \
     --output prompts.json
+
+# Math problem formatting
+python deepseek_generator.py "solve this math problem" \
+    --math-problem \
+    --temperature 0.6
+
+# Disable reasoning enforcement
+python deepseek_generator.py "a mystical forest" \
+    --no-reasoning
 ```
 
 ### Model Management
@@ -94,6 +105,31 @@ black .
 - `requirements.txt`: Python dependencies
 - `environment.yml`: Conda environment specification
 - `TROUBLESHOOTING.md`: Common issues and solutions
+
+## Official Usage Recommendations
+
+Based on the DeepSeek-R1 official documentation, the following settings are recommended:
+
+### Generation Parameters
+- **Temperature**: 0.6 (range: 0.5-0.7) - prevents endless repetitions
+- **Top-p**: 0.95 - for nucleus sampling
+- **Max Length**: 32,768 tokens - official maximum generation length
+- **Reasoning Enforcement**: Enabled by default - ensures `<think>` prefix
+
+### Prompt Guidelines
+- Avoid system prompts - all instructions should be in the user prompt
+- For math problems: use `--math-problem` flag for step-by-step reasoning
+- Multiple tests and averaging recommended for evaluation
+- The model may bypass thinking patterns, so reasoning enforcement is recommended
+
+### Command Line Examples
+```bash
+# Standard usage with recommended settings
+python deepseek_generator.py "a mystical forest" --temperature 0.6 --top-p 0.95
+
+# Math problem with step-by-step reasoning
+python deepseek_generator.py "solve 2x + 3 = 7" --math-problem
+```
 
 ## Hardware Requirements
 

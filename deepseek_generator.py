@@ -18,8 +18,11 @@ class DeepSeekGenerator:
                  model_name: str = "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
                  optimize_memory: bool = False,
                  device: str = None,
-                 max_length: int = 2048,
-                 model_dir: str = './models'):
+                 max_length: int = 32768,
+                 model_dir: str = './models',
+                 temperature: float = 0.6,
+                 top_p: float = 0.95,
+                 enforce_reasoning: bool = True):
         """
         Initialize the DeepSeek prompt generator with memory optimizations.
         
@@ -27,8 +30,11 @@ class DeepSeekGenerator:
             model_name: HuggingFace model identifier or local path
             optimize_memory: If True, enables memory optimizations
             device: Specify 'cuda' or 'cpu' (if None, will auto-detect)
-            max_length: Maximum token length for generation
+            max_length: Maximum token length for generation (default: 32768)
             model_dir: Directory to store/load model files (prevents re-downloading)
+            temperature: Temperature for generation (default: 0.6, recommended range: 0.5-0.7)
+            top_p: Top-p value for nucleus sampling (default: 0.95)
+            enforce_reasoning: Whether to enforce reasoning prefix <think> (default: True)
         """
         # Set device
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
@@ -55,6 +61,9 @@ class DeepSeekGenerator:
                 print("This may not be a valid model directory.")
             
         self.max_length = max_length
+        self.temperature = temperature
+        self.top_p = top_p
+        self.enforce_reasoning = enforce_reasoning
         
         # Initialize tokenizer with appropriate settings
         print("Loading tokenizer...")
@@ -157,13 +166,15 @@ class DeepSeekGenerator:
                 "sci-fi": "Generate a science fiction scene with futuristic technology"
             }
 
-    def generate_prompt(self, description: str, style: str = "cinematic") -> str:
+    def generate_prompt(self, description: str, style: str = "cinematic", 
+                       is_math_problem: bool = False) -> str:
         """
         Generate a detailed image generation prompt based on the description.
         
         Args:
             description: Brief description to expand into a detailed prompt
             style: Style template to use (cinematic, anime, etc.)
+            is_math_problem: If True, formats as math problem with step-by-step reasoning
             
         Returns:
             A detailed prompt for image generation
@@ -172,15 +183,23 @@ class DeepSeekGenerator:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             
-        user_prompt = f"""<think>\nCreate a detailed image generation prompt based on this description: "{description}"
-        Style reference: {self.style_templates.get(style, "Create a high-quality image")}
-        Include specific details about:
-        - Composition
-        - Lighting
-        - Colors
-        - Atmosphere
-        - Technical qualities
-        Format the response as a single, detailed prompt."""
+        # Build the core prompt structure that is common to both cases
+        prompt_core = f"""Create a detailed image generation prompt based on this description: "{description}"
+Style reference: {self.style_templates.get(style, "Create a high-quality image")}
+Include specific details about:
+- Composition
+- Lighting
+- Colors
+- Atmosphere
+- Technical qualities
+Format the response as a single, detailed prompt."""
+        
+        if is_math_problem:
+            # Prepend the math-specific instruction
+            math_instruction = "Please reason step by step, and put your final answer within \\boxed{{}}.\n"
+            user_prompt = math_instruction + prompt_core
+        else:
+            user_prompt = prompt_core
 
         inputs = self.tokenizer(
             user_prompt,
@@ -193,13 +212,13 @@ class DeepSeekGenerator:
         with torch.inference_mode():
             outputs = self.model.generate(
                 inputs["input_ids"],
-                max_new_tokens=self.max_new_tokens,  # Use max_new_tokens instead of max_length
-                temperature=0.6,  # As recommended in docs
-                top_p=0.95,
+                max_new_tokens=self.max_new_tokens,
+                temperature=self.temperature,
+                top_p=self.top_p,
                 do_sample=True,
                 use_cache=True,
                 pad_token_id=self.tokenizer.pad_token_id,
-                attention_mask=torch.ones_like(inputs["input_ids"])  # Explicitly set attention mask
+                attention_mask=torch.ones_like(inputs["input_ids"])
             )
             
         # Clear memory after generation
@@ -207,16 +226,25 @@ class DeepSeekGenerator:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # Decode the output
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Enforce reasoning prefix if enabled
+        if self.enforce_reasoning and not generated_text.strip().startswith("<think>"):
+            # If the generated text doesn't start with <think>, add it
+            generated_text = f"<think>\n{generated_text.strip()}\n</think>"
+        
+        return generated_text
 
-    def generate_variations(self, prompt: str, num_variations: int = 3) -> List[str]:
+    def generate_variations(self, prompt: str, num_variations: int = 3, 
+                           style: str = "cinematic", is_math_problem: bool = False) -> List[str]:
         variations = []
         
         for _ in range(num_variations):
             # Generate variation with memory management
             try:
                 with torch.inference_mode():
-                    variation = self.generate_prompt(prompt)
+                    variation = self.generate_prompt(prompt, style, is_math_problem)
                     variations.append(self.enhance_prompt(variation))
                 
                 # Clear memory after each variation
@@ -248,11 +276,19 @@ def main():
     parser.add_argument("--optimize", action="store_true", help="Enable memory optimization")
     parser.add_argument("--device", type=str, choices=['cuda', 'cpu'], help="Device to use")
     parser.add_argument("--output", type=str, help="Output JSON file path")
-    parser.add_argument("--max-length", type=int, default=2048, help="Maximum length for generation")
+    parser.add_argument("--max-length", type=int, default=32768, help="Maximum length for generation")
     parser.add_argument("--model-dir", type=str, default="./models", 
                         help="Directory to store/load model files (prevents re-downloading)")
     parser.add_argument("--model-name", type=str, default="deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
                         help="Model to use (HuggingFace model ID or local path)")
+    parser.add_argument("--temperature", type=float, default=0.6, 
+                        help="Temperature for generation (recommended: 0.5-0.7)")
+    parser.add_argument("--top-p", type=float, default=0.95, 
+                        help="Top-p value for nucleus sampling")
+    parser.add_argument("--no-reasoning", action="store_true", 
+                        help="Disable reasoning prefix enforcement")
+    parser.add_argument("--math-problem", action="store_true", 
+                        help="Format as math problem with step-by-step reasoning")
     
     args = parser.parse_args()
     
@@ -265,11 +301,15 @@ def main():
             optimize_memory=args.optimize,
             device=args.device,
             max_length=args.max_length,
-            model_dir=args.model_dir
+            model_dir=args.model_dir,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            enforce_reasoning=not args.no_reasoning
         )
         
-        base_prompt = generator.generate_prompt(args.description, args.style)
-        variations = generator.generate_variations(args.description, args.variations)
+        base_prompt = generator.generate_prompt(args.description, args.style, args.math_problem)
+        variations = generator.generate_variations(args.description, args.variations, 
+                                                  args.style, args.math_problem)
         
         result = {
             "description": args.description,
